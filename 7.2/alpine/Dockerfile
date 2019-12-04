@@ -1,4 +1,28 @@
-FROM php:7.2-alpine
+# install noverify
+FROM alpine as vkcom-noverify
+RUN set -xe && \
+    apk add --no-cache \
+        git \
+        go \
+        musl-dev && \
+    go get -u github.com/VKCOM/noverify && \
+    cd /root/go/src/github.com/VKCOM/noverify && \
+    go build && \
+    git clone https://github.com/JetBrains/phpstorm-stubs.git --depth 1 /usr/src/phpstorm-stubs
+
+FROM php:7.2.10-fpm-alpine as php-ast
+RUN set -xe; \
+    apk add --no-cache \
+        git \
+        $PHPIZE_DEPS; \
+    git clone https://github.com/nikic/php-ast.git; \
+    cd php-ast; \
+    phpize; \
+    ./configure; \
+    make install
+
+# phpqa dockerfile for php:7.2.10-alpine
+FROM php:7.2.10-alpine
 
 LABEL maintainer="Jakub Zalas <jakub@zalas.pl>"
 
@@ -31,3 +55,33 @@ RUN apk add --no-cache --virtual .tool-deps $TOOL_DEPS $LIB_DEPS \
 ADD entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD php $TOOLBOX_TARGET_DIR/toolbox list-tools
+
+# Add tools
+COPY --from=vkcom-noverify /root/go/src/github.com/VKCOM/noverify/noverify /usr/local/bin/
+COPY --from=vkcom-noverify /usr/src/phpstorm-stubs /usr/src/phpstorm-stubs
+COPY --from=php-ast /var/www/html/php-ast/modules/ast.so /usr/local/lib/php/extensions/
+
+RUN wget -O phpunit-5 https://phar.phpunit.de/phpunit-5.phar \
+   && chmod +x phpunit-5 \
+   && mv phpunit-5 $TOOLBOX_TARGET_DIR/
+RUN wget -O yaml-lint https://github.com/j13k/yaml-lint/releases/download/1.1.3/yaml-lint.phar \
+    && chmod +x yaml-lint \
+    && mv yaml-lint $TOOLBOX_TARGET_DIR/.composer/vendor/bin
+
+RUN wget -O twig-lint https://asm89.github.io/d/twig-lint.phar \
+    && chmod +x twig-lint \
+    && mv twig-lint $TOOLBOX_TARGET_DIR/.composer/vendor/bin
+
+RUN docker-php-ext-install pdo pdo_mysql calendar bcmath
+RUN apk add --no-cache --virtual .build-deps libxml2-dev \
+ && docker-php-ext-install soap \
+ && apk del .build-deps
+
+RUN apk add --update icu \
+ && apk add --no-cache --virtual .build-deps \
+   zlib-dev \
+   icu-dev \
+ && docker-php-ext-configure intl \
+ && docker-php-ext-install intl \
+ && docker-php-ext-enable intl \
+ && apk del .build-deps
