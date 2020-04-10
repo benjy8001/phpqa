@@ -72,6 +72,11 @@ RUN wget -O twig-lint https://asm89.github.io/d/twig-lint.phar \
     && chmod +x twig-lint \
     && mv twig-lint $TOOLBOX_TARGET_DIR/.composer/vendor/bin
 
+# Install phpcpd for PHP 7.2
+RUN wget -O phpcpd https://phar.phpunit.de/phpcpd-4.1.0.phar \
+    && chmod +x phpcpd \
+    && mv phpcpd $TOOLBOX_TARGET_DIR/.composer/vendor/bin
+
 RUN docker-php-ext-install pdo pdo_mysql calendar bcmath
 RUN apk add --no-cache --virtual .build-deps libxml2-dev \
  && docker-php-ext-install soap \
